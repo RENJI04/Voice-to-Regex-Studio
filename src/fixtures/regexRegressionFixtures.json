@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "fixtures": [
+    {
+      "id": "empty-string",
+      "label": "Empty string",
+      "text": "",
+      "tags": ["empty", "boundary", "zero-width"],
+      "flavors": ["javascript", "python", "pcre", "re2-go"],
+      "surprisingIfMatched": "This pattern also matches an empty string."
+    },
+    {
+      "id": "edge-whitespace",
+      "label": "Edge whitespace",
+      "text": "\t leading tab\ntrailing space \r\n\u00a0non-breaking space\u00a0",
+      "tags": ["edge-whitespace", "whitespace", "boundary"],
+      "flavors": ["javascript", "python", "pcre", "re2-go"],
+      "surprisingIfMatched": "This pattern matches whitespace-heavy input, including tabs, line breaks, or non-breaking spaces."
+    },
+    {
+      "id": "unicode-words",
+      "label": "Unicode words",
+      "text": "caf\u00e9 cafe\u0301 na\u00efve Stra\u00dfe \uff11\uff12\uff13 \u041f\u0440\u0438\u0432\u0435\u0442 \u6771\u4eac",
+      "tags": ["unicode", "word", "case", "numeric"],
+      "flavors": ["javascript", "python", "pcre", "re2-go"],
+      "surprisingIfMatched": "This pattern matches non-ASCII text; double-check locale, case, and word-boundary assumptions."
+    },
+    {
+      "id": "emoji-graphemes",
+      "label": "Emoji and graphemes",
+      "text": "Plain \ud83d\ude42 emoji, family \ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66, flag \ud83c\uddfa\ud83c\uddf8, hashtag #regex",
+      "tags": ["emoji", "unicode", "hashtag", "grapheme"],
+      "flavors": ["javascript", "python", "pcre", "re2-go"],
+      "surprisingIfMatched": "This pattern matches emoji or extended grapheme input, which may not behave like one visible character."
+    },
+    {
+      "id": "nested-quantifier-stress",
+      "label": "Nested quantifier stress",
+      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!",
+      "tags": ["stress", "nested-quantifier", "redos", "long"],
+      "flavors": ["javascript", "python", "pcre", "re2-go"],
+      "surprisingIfMatched": "This pattern matches a nested-quantifier stress string; validate performance on production-scale input."
+    },
+    {
+      "id": "very-long-run",
+      "label": "Very long repeated token run",
+      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!",
+      "tags": ["long", "stress", "redos"],
+      "flavors": ["javascript", "python", "pcre", "re2-go"],
+      "surprisingIfMatched": "This pattern also matches a long repeated-character string; check that broad matching is intentional."
+    },
+    {
+      "id": "lookaround-context",
+      "label": "Lookahead and lookbehind context",
+      "text": "foo=bar foo=baz total=$42 prefixVALUE suffix item-42 not-item-007",
+      "tags": ["lookahead", "lookbehind", "numeric", "boundary"],
+      "flavors": ["javascript", "python", "pcre"],
+      "maxMatchesBeforeWarning": 8
+    },
+    {
+      "id": "dates-and-numbers",
+      "label": "Dates and numbers",
+      "text": "Dates: 2026-07-07, 07/07/2026, 2026/7/7. Values: 42, -17.5, 003, 1,234.",
+      "tags": ["numeric", "date", "boundary"],
+      "flavors": ["javascript", "python", "pcre", "re2-go"],
+      "maxMatchesBeforeWarning": 12
+    },
+    {
+      "id": "email-url-noise",
+      "label": "Email and URL noise",
+      "text": "Contact dev@example.com or invalid dev@@example. Visit https://example.com/path?q=regex.",
+      "tags": ["email", "url", "punctuation", "word"],
+      "flavors": ["javascript", "python", "pcre", "re2-go"],
+      "maxMatchesBeforeWarning": 10
+    },
+    {
+      "id": "hashtag-and-social",
+      "label": "Hashtags and handles",
+      "text": "Post #regex #AI2026 from @regex_studio, but not # or an email@example.com.",
+      "tags": ["hashtag", "social", "word", "email"],
+      "flavors": ["javascript", "python", "pcre", "re2-go"],
+      "maxMatchesBeforeWarning": 10
+    },
+    {
+      "id": "quoted-strings",
+      "label": "Quoted strings",
+      "text": "\"quoted value\" 'single quoted' \"unterminated and `template-ish`",
+      "tags": ["quotes", "punctuation", "boundary"],
+      "flavors": ["javascript", "python", "pcre", "re2-go"],
+      "maxMatchesBeforeWarning": 8
+    }
+  ]
+}

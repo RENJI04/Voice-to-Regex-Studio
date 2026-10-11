@@ -102,6 +102,21 @@ Planned:
 - Keys entered in the UI are stored locally in the browser.
 - Generated regex patterns should be reviewed against real data before production use.
 
+## Troubleshooting
+
+- **Voice input unavailable:** Check browser
+  microphone permissions. If speech recognition
+  is unsupported, use the text input instead.
+
+- **AI generation fails:** Verify the provider,
+  model, API key, and endpoint configuration.
+
+- **Unexpected regex behavior:** Verify the
+  target flavor and test in its intended runtime.
+
+- **Before submitting changes:** Run
+  `npm run build`, `npm run lint`, and `npm run test`.
+  
 ## Contributing
 
 Issues and pull requests are welcome. Keep changes focused and run the validation commands before opening a PR:

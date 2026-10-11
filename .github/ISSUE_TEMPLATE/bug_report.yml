@@ -1,0 +1,85 @@
+name: "Bug Report"
+description: "Report a bug in Voice-to-Regex Studio"
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug!
+        Please provide enough details to help us reproduce it.
+        Never include API keys, tokens, or other secrets.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected Area
+      description: Which part of the application is affected?
+      options:
+        - Regex Sandbox
+        - AI Regex Generation
+        - Regex Explanation
+        - Voice Input
+        - History and Sharing
+        - User Interface
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: Describe the problem clearly.
+      placeholder: Explain what went wrong.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      placeholder: |
+        1. Open the application
+        2. Navigate to...
+        3. Click on...
+        4. Observe the issue
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened?
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and Version
+      placeholder: "Chrome 130, Firefox 131, etc."
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or Logs
+      description: Add screenshots or sanitized error logs if relevant.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues for duplicates.
+          required: true
+        - label: I have removed secrets and personal data from this report.
+          required: true

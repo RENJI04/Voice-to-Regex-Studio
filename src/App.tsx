@@ -1,12 +1,40 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
+  DEFAULT_PROVIDER_MODELS,
+  type AIProviderKind,
+  type AIProviderSettings,
+  type ExplainRegexResponse,
+  type GenerateRegexResponse,
+  type RegexAnnotation,
+  type RegexSuggestion,
+  type TargetFlavor,
+} from '../shared/ai'
+import { APP_NAME, APP_TAGLINE, STORAGE_KEYS } from './config/app'
+import {
+  explainRegexPattern,
+  generateRegexFromDescription,
+  testAIProviderConnection,
+} from './lib/aiClient'
+import {
   auditPatternAgainstFixtures,
   type FixtureAuditReport,
 } from './lib/fixtureAudit'
+import {
+  createHistoryEntry,
+  getInitialTheme,
+  isTargetFlavor,
+  MAX_HISTORY_ENTRIES,
+  readAISettings,
+  readPatternHistory,
+  type HistoryEntry,
+  type ThemeMode,
+  writeAISettings,
+  writePatternHistory,
+} from './lib/persistence'
 
 const DEFAULT_PATTERN = String.raw`\b(?<word>[A-Z][a-z]+)\b`
 const DEFAULT_FLAGS = 'gm'
-const DEFAULT_SAMPLE = `Voice-to-Regex Studio turns ideas into testable patterns.
+const DEFAULT_SAMPLE = `${APP_NAME} turns ideas into testable patterns.
 
 Alice booked Room 42 on Monday.
 Bob booked Room 17 on Friday.
@@ -14,24 +42,7 @@ No capitalized name here: widget-123.`
 const DEFAULT_DESCRIPTION =
   'Match capitalized first names, and capture the name as "word".'
 
-const AI_SETTINGS_STORAGE_KEY = 'voice-to-regex-studio:ai-settings'
-const THEME_STORAGE_KEY = 'voice-to-regex-studio:theme'
-const DEFAULT_CUSTOM_REQUEST_TEMPLATE = `{
-  "model": "{{model}}",
-  "messages": [
-    { "role": "system", "content": "{{systemPrompt}}" },
-    { "role": "user", "content": "{{prompt}}" }
-  ]
-}`
-const DEFAULT_CUSTOM_RESPONSE_PATH = 'choices.0.message.content'
-const DEFAULT_PROVIDER_MODELS = {
-  anthropic: 'claude-sonnet-5',
-  custom: 'gpt-4o-mini',
-  openai: 'gpt-4o-mini',
-} as const
 const DEFAULT_TARGET_FLAVOR = 'javascript'
-const HISTORY_STORAGE_KEY = 'voice-to-regex-studio:pattern-history'
-const MAX_HISTORY_ENTRIES = 12
 const MAX_RENDERED_MATCHES = 500
 const REGEX_EVALUATION_TIMEOUT_MS = 350
 const TARGET_FLAVORS = {
@@ -70,21 +81,6 @@ const TARGET_FLAVOR_OPTIONS = Object.entries(TARGET_FLAVORS).map(
   }),
 )
 const JS_PREVIEW_FLAGS = new Set(['d', 'i', 'm', 's', 'u', 'v', 'y'])
-
-type TargetFlavor = keyof typeof TARGET_FLAVORS
-type AIProviderKind = keyof typeof DEFAULT_PROVIDER_MODELS
-type ThemeMode = 'dark' | 'light'
-
-type AIProviderSettings = {
-  apiKey: string
-  customApiKeyHeader: string
-  customApiKeyPrefix: string
-  customRequestTemplate: string
-  customResponsePath: string
-  customUrl: string
-  model: string
-  provider: AIProviderKind
-}
 
 type RegexMatch = {
   id: string
@@ -128,60 +124,6 @@ type RegexWorkerResponse =
       error: string
       type: 'error'
     }
-
-type RegexSuggestion = {
-  title: string
-  description: string
-  request: string
-}
-
-type GenerateRegexSuccess = {
-  needsClarification: false
-  pattern: string
-  flags: string
-  explanation: string
-  warnings: string[]
-  suggestions: RegexSuggestion[]
-  targetFlavor?: TargetFlavor
-  model?: string
-  provider?: AIProviderKind
-}
-
-type GenerateRegexClarification = {
-  needsClarification: true
-  question: string
-  targetFlavor?: TargetFlavor
-  model?: string
-  provider?: AIProviderKind
-}
-
-type GenerateRegexResponse = GenerateRegexSuccess | GenerateRegexClarification
-
-type RegexAnnotation = {
-  token: string
-  position: number
-  meaning: string
-}
-
-type ExplainRegexResponse = {
-  summary: string
-  annotations: RegexAnnotation[]
-  warnings: string[]
-  targetFlavor?: TargetFlavor
-  model?: string
-  provider?: AIProviderKind
-}
-
-type HistoryEntry = {
-  id: string
-  pattern: string
-  flags: string
-  targetFlavor: TargetFlavor
-  description: string
-  explanation?: string
-  sampleText?: string
-  createdAt: number
-}
 
 type SpeechRecognitionConstructor = new () => BrowserSpeechRecognition
 
@@ -476,268 +418,6 @@ async function copyTextToClipboard(text: string) {
   textarea.select()
   document.execCommand('copy')
   textarea.remove()
-}
-
-function getInitialTheme(): ThemeMode {
-  if (typeof window === 'undefined') {
-    return 'light'
-  }
-
-  const savedTheme = localStorage.getItem(THEME_STORAGE_KEY)
-
-  if (savedTheme === 'dark' || savedTheme === 'light') {
-    return savedTheme
-  }
-
-  return window.matchMedia('(prefers-color-scheme: dark)').matches
-    ? 'dark'
-    : 'light'
-}
-
-function getDefaultAISettings(
-  provider: AIProviderKind = 'anthropic',
-): AIProviderSettings {
-  return {
-    apiKey: '',
-    customApiKeyHeader: 'Authorization',
-    customApiKeyPrefix: 'Bearer',
-    customRequestTemplate: DEFAULT_CUSTOM_REQUEST_TEMPLATE,
-    customResponsePath: DEFAULT_CUSTOM_RESPONSE_PATH,
-    customUrl: '',
-    model: DEFAULT_PROVIDER_MODELS[provider],
-    provider,
-  }
-}
-
-function isAIProvider(value: unknown): value is AIProviderKind {
-  return value === 'anthropic' || value === 'openai' || value === 'custom'
-}
-
-function normalizeAISettings(value: unknown): AIProviderSettings {
-  if (!value || typeof value !== 'object') {
-    return getDefaultAISettings()
-  }
-
-  const candidate = value as Record<string, unknown>
-  const provider = isAIProvider(candidate.provider) ? candidate.provider : 'anthropic'
-  const defaults = getDefaultAISettings(provider)
-
-  return {
-    apiKey:
-      typeof candidate.apiKey === 'string' ? candidate.apiKey : defaults.apiKey,
-    customApiKeyHeader:
-      typeof candidate.customApiKeyHeader === 'string'
-        ? candidate.customApiKeyHeader
-        : defaults.customApiKeyHeader,
-    customApiKeyPrefix:
-      typeof candidate.customApiKeyPrefix === 'string'
-        ? candidate.customApiKeyPrefix
-        : defaults.customApiKeyPrefix,
-    customRequestTemplate:
-      typeof candidate.customRequestTemplate === 'string'
-        ? candidate.customRequestTemplate
-        : defaults.customRequestTemplate,
-    customResponsePath:
-      typeof candidate.customResponsePath === 'string'
-        ? candidate.customResponsePath
-        : defaults.customResponsePath,
-    customUrl:
-      typeof candidate.customUrl === 'string'
-        ? candidate.customUrl
-        : defaults.customUrl,
-    model:
-      typeof candidate.model === 'string' && candidate.model.trim()
-        ? candidate.model
-        : defaults.model,
-    provider,
-  }
-}
-
-function readAISettings() {
-  if (typeof localStorage === 'undefined') {
-    return getDefaultAISettings()
-  }
-
-  try {
-    return normalizeAISettings(
-      JSON.parse(localStorage.getItem(AI_SETTINGS_STORAGE_KEY) ?? 'null'),
-    )
-  } catch {
-    return getDefaultAISettings()
-  }
-}
-
-function writeAISettings(settings: AIProviderSettings) {
-  if (typeof localStorage === 'undefined') {
-    return
-  }
-
-  localStorage.setItem(AI_SETTINGS_STORAGE_KEY, JSON.stringify(settings))
-}
-
-function isTargetFlavor(value: string | null): value is TargetFlavor {
-  return value !== null && Object.prototype.hasOwnProperty.call(TARGET_FLAVORS, value)
-}
-
-function getHistoryEntryId() {
-  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(36).slice(2)}`
-}
-
-function readPatternHistory() {
-  if (typeof localStorage === 'undefined') {
-    return []
-  }
-
-  try {
-    const rawHistory = localStorage.getItem(HISTORY_STORAGE_KEY)
-    const parsedHistory = rawHistory ? (JSON.parse(rawHistory) as unknown) : []
-
-    if (!Array.isArray(parsedHistory)) {
-      return []
-    }
-
-    return parsedHistory
-      .filter((entry): entry is HistoryEntry => {
-        if (!entry || typeof entry !== 'object') {
-          return false
-        }
-
-        const candidate = entry as Record<string, unknown>
-
-        return (
-          typeof candidate.id === 'string' &&
-          typeof candidate.pattern === 'string' &&
-          typeof candidate.flags === 'string' &&
-          typeof candidate.description === 'string' &&
-          typeof candidate.createdAt === 'number' &&
-          typeof candidate.targetFlavor === 'string' &&
-          isTargetFlavor(candidate.targetFlavor)
-        )
-      })
-      .slice(0, MAX_HISTORY_ENTRIES)
-  } catch {
-    return []
-  }
-}
-
-function writePatternHistory(entries: HistoryEntry[]) {
-  if (typeof localStorage === 'undefined') {
-    return
-  }
-
-  localStorage.setItem(
-    HISTORY_STORAGE_KEY,
-    JSON.stringify(entries.slice(0, MAX_HISTORY_ENTRIES)),
-  )
-}
-
-function createHistoryEntry({
-  description,
-  explanation,
-  flags,
-  pattern,
-  sampleText,
-  targetFlavor,
-}: Omit<HistoryEntry, 'createdAt' | 'id'>) {
-  return {
-    id: getHistoryEntryId(),
-    pattern,
-    flags,
-    targetFlavor,
-    description,
-    explanation,
-    sampleText,
-    createdAt: Date.now(),
-  }
-}
-
-async function generateRegexFromDescription(
-  aiSettings: AIProviderSettings,
-  description: string,
-  sampleText: string,
-  targetFlavor: TargetFlavor,
-) {
-  const response = await fetch('/api/generate-regex', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      aiConfig: aiSettings,
-      description,
-      sampleText,
-      targetFlavor,
-    }),
-  })
-
-  const payload = (await response.json()) as
-    | GenerateRegexResponse
-    | { error?: string }
-
-  if (!response.ok) {
-    throw new Error(
-      'error' in payload && payload.error
-        ? payload.error
-        : 'Regex generation request failed.',
-    )
-  }
-
-  return payload as GenerateRegexResponse
-}
-
-async function explainRegexPattern(
-  aiSettings: AIProviderSettings,
-  pattern: string,
-  flags: string,
-  sampleText: string,
-  targetFlavor: TargetFlavor,
-) {
-  const response = await fetch('/api/explain-regex', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      aiConfig: aiSettings,
-      pattern,
-      flags,
-      sampleText,
-      targetFlavor,
-    }),
-  })
-
-  const payload = (await response.json()) as
-    | ExplainRegexResponse
-    | { error?: string }
-
-  if (!response.ok) {
-    throw new Error(
-      'error' in payload && payload.error
-        ? payload.error
-        : 'Regex explanation request failed.',
-    )
-  }
-
-  return payload as ExplainRegexResponse
-}
-
-async function testAIProviderConnection(aiSettings: AIProviderSettings) {
-  const response = await fetch('/api/test-provider', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      aiConfig: aiSettings,
-    }),
-  })
-  const payload = (await response.json()) as { error?: string; ok?: boolean }
-
-  if (!response.ok || !payload.ok) {
-    throw new Error(payload.error ?? 'Provider connection test failed.')
-  }
 }
 
 function HighlightedSample({
@@ -1717,9 +1397,8 @@ function App() {
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null)
   const speechBaseDescriptionRef = useRef(DEFAULT_DESCRIPTION)
   const interimTranscriptRef = useRef('')
-  const [aiSettings, setAISettings] = useState<AIProviderSettings>(() =>
-    getDefaultAISettings(),
-  )
+  const [aiSettings, setAISettings] =
+    useState<AIProviderSettings>(readAISettings)
   const [aiSettingsError, setAISettingsError] = useState<string | null>(null)
   const [aiSettingsStatus, setAISettingsStatus] = useState<string | null>(null)
   const [isTestingProvider, setIsTestingProvider] = useState(false)
@@ -1742,7 +1421,8 @@ function App() {
     createEvaluationState(),
   )
   const [isExplaining, setIsExplaining] = useState(false)
-  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([])
+  const [historyEntries, setHistoryEntries] =
+    useState<HistoryEntry[]>(readPatternHistory)
   const [pattern, setPattern] = useState(DEFAULT_PATTERN)
   const [flags, setFlags] = useState(DEFAULT_FLAGS)
   const [sampleText, setSampleText] = useState(DEFAULT_SAMPLE)
@@ -1773,7 +1453,7 @@ function App() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = themeMode
-    localStorage.setItem(THEME_STORAGE_KEY, themeMode)
+    localStorage.setItem(STORAGE_KEYS.theme, themeMode)
   }, [themeMode])
 
   useEffect(() => {
@@ -1836,9 +1516,6 @@ function App() {
   }, [debouncedFlags, debouncedPattern, debouncedSampleText, targetFlavor])
 
   useEffect(() => {
-    setAISettings(readAISettings())
-    setHistoryEntries(readPatternHistory())
-
     const searchParams = new URLSearchParams(window.location.search)
     const sharedPattern = searchParams.get('pattern')
     const sharedFlags = searchParams.get('flags')
@@ -2256,12 +1933,12 @@ function App() {
     <main className="app-shell min-h-screen">
       <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-5 sm:px-6 lg:px-8">
         <header className="mb-5 flex flex-col justify-between gap-4 border-b border-stone-200 pb-5 sm:flex-row sm:items-end">
-          <div>
+          <div aria-label={`${APP_NAME}: ${APP_TAGLINE}`}>
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">
-              Regex Studio
+              {APP_TAGLINE}
             </p>
             <h1 className="mt-2 text-3xl font-semibold text-stone-950 sm:text-4xl">
-              Voice-to-Regex Studio
+              {APP_NAME}
             </h1>
           </div>
           <div className="flex flex-wrap gap-2 text-sm">

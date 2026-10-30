@@ -1,5 +1,5 @@
 name: "Bug Report"
-description: "Report a bug in Voice-to-Regex Studio"
+description: "Report a bug in Renex"
 title: "[Bug]: "
 body:
   - type: markdown

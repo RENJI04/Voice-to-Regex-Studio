@@ -1,32 +1,41 @@
-# Voice-to-Regex Studio
+# Renex
 
-Voice-to-Regex Studio is a React and TypeScript app for generating regular expressions from typed or spoken natural language, testing them against sample text, and explaining existing patterns. It is built for developers and analysts who need a faster regex workflow without splitting work across a chat window, a tester, and reference docs.
+**AI-Powered Regex IDE**
 
-## Features
+Renex is an AI-powered regex development platform for generation, testing,
+explanation, debugging, security analysis, optimization, and cross-engine
+conversion. This repository is evolving incrementally from Voice-to-Regex
+Studio; the current release provides the working foundation described below.
 
-- Live regex sandbox with debounced evaluation, match highlighting, match counts, and capture group inspection.
-- Web Worker-based regex evaluation with a timeout guard for runaway patterns.
-- Provider-agnostic AI generation through Anthropic, OpenAI Chat Completions, or a configurable custom endpoint.
-- Shared JSON parsing and validation for AI responses, including a retry path for malformed provider output.
-- Regex-to-English explainer with token-level annotations and interactive highlighting.
-- Web Speech API support for voice input, with text input fallback when speech recognition is unavailable.
-- Target flavor selection for JavaScript, Python `re`, PCRE, and RE2/Go.
-- Local pattern history, copy actions, and shareable URL state.
-- Dark and light themes using semantic CSS variables.
-- Curated fixture audit plus an internal regression runner for prompt behavior checks.
+## Implemented today
 
-## Tech Stack
+- Natural-language regex generation through Anthropic, OpenAI Chat
+  Completions, or a configurable custom HTTP endpoint.
+- Regex-to-English explanations with token-level annotations.
+- JavaScript, Python `re`, PCRE, and RE2/Go target selection, with
+  target-specific prompt and flag validation.
+- A debounced browser regex sandbox with match highlighting, match counts,
+  capture groups, and zero-width match handling.
+- Web Worker evaluation with a 350 ms timeout and a 500-match display limit.
+  The timeout is a browser-safety guard, not a complete ReDoS analyzer.
+- Web Speech API input with text input fallback.
+- Browser-local pattern history, shareable URL state, copy actions, and
+  light/dark themes.
+- A curated fixture audit and command-line regression suite. These are useful
+  heuristics and regression checks, not a production security scanner.
 
-- React 19
-- TypeScript
-- Vite
-- Tailwind CSS
-- Web Workers
-- Web Speech API
-- Oxlint
-- Anthropic, OpenAI, or custom HTTP AI provider
+Renex does not yet include a production backend, accounts, a database,
+collaboration, a complete regex security engine, optimization, or cross-engine
+conversion. Those capabilities remain roadmap work.
 
-## Setup
+## Development setup
+
+Requirements:
+
+- Node.js 24 is used by the current development environment.
+- npm with the committed `package-lock.json`.
+- Python on `PATH` for server-side validation of generated Python `re`
+  patterns.
 
 ```bash
 git clone https://github.com/RENJI04/Voice-to-Regex-Studio.git
@@ -35,96 +44,122 @@ npm install
 npm run dev
 ```
 
-Vite prints the local development URL after startup.
-
-No build-time API key is required. Provider credentials are entered in the app settings panel and are stored in browser local storage. Do not commit real provider keys to `.env` files or documentation.
-
-## Usage
-
-1. Choose a regex target flavor: JavaScript, Python `re`, PCRE, or RE2/Go.
-2. Enter a regex directly in the sandbox, or describe the pattern you want in natural language.
-3. In **AI settings**, select Anthropic, OpenAI, or a custom endpoint, then enter your API key and model.
-4. Generate a pattern and review the live matches, capture groups, warnings, suggestions, and fixture audit results.
-5. Paste an existing regex and use **Explain regex** to inspect token-level behavior.
-6. Save useful patterns to local history or share the current state through URL parameters.
+Vite prints the local development URL after startup. No build-time API key is
+required.
 
 ## Commands
 
 ```bash
-npm run dev              # Start the Vite dev server
-npm run build            # Type-check and build for production
-npm run preview          # Preview the production build
+npm run dev              # Start Vite and the development API middleware
+npm run typecheck        # Run strict TypeScript project checks
 npm run lint             # Run Oxlint
-npm run typecheck        # Run TypeScript project checks
-npm run test             # Run the regression suite
-npm run test:regression  # Run fixture-based prompt behavior checks
+npm run test             # Run the fixture-based regression suite
+npm run test:regression  # Run the regression suite directly
+npm run build            # Type-check and build the static frontend bundle
+npm run preview          # Preview the static production build
 ```
 
-## Project Structure
+## Development architecture
+
+The browser application is a React 19 and TypeScript frontend built with Vite.
+Regex evaluation runs in `src/regexWorker.ts`. Curated fixture auditing lives in
+`src/lib/fixtureAudit.ts`. Shared AI route names, provider settings, and response
+types live in `shared/ai.ts`; browser API calls and persistence are separated in
+`src/lib/aiClient.ts` and `src/lib/persistence.ts`.
+
+During `npm run dev`, `server/aiRegexPlugin.ts` registers these same-origin Vite
+development middleware routes:
+
+- `POST /api/generate-regex`
+- `POST /api/explain-regex`
+- `POST /api/test-provider`
+
+The middleware validates request shapes and AI JSON responses, then calls the
+selected upstream provider. These routes exist only in the Vite development
+server. `npm run build` produces a static frontend and does not create a
+production implementation of them.
+
+## Provider credentials and browser storage
+
+Users enter provider settings in the AI settings panel. The complete settings
+object, including the API key, is persisted in browser `localStorage`. When the
+user generates, explains, or tests a provider connection, the frontend sends
+that complete provider configuration to the application's same-origin
+development API. The Vite middleware receives the key and forwards it to the
+configured upstream provider. The key is therefore not exclusively
+browser-local during AI requests.
+
+Phase 1 preserves these existing storage keys so current browser data remains
+available after the Renex rebrand:
+
+- `voice-to-regex-studio:ai-settings`
+- `voice-to-regex-studio:pattern-history`
+- `voice-to-regex-studio:theme`
+
+Do not place real provider keys in `.env` files, source code, documentation,
+issue reports, or commits.
+
+## Current security boundary
+
+The development middleware limits request-body size and validates several
+provider and regex response shapes. It does not provide production
+authentication, authorization, rate limiting, quotas, audit logging, log
+redaction, shared server-managed provider secrets, or durable user data.
+
+Custom provider URLs are supplied by the browser and fetched by the development
+middleware. The current implementation does not provide production-grade SSRF
+protection, destination allowlisting, DNS/IP validation, or redirect controls.
+Use custom endpoints only in a trusted development environment.
+
+A production backend must implement the API routes and add server-side secret
+management, authentication, authorization, rate limiting, quotas, provider
+allowlisting, SSRF defenses, redirect and network controls, request timeouts,
+logging redaction, monitoring, and abuse controls. These are future
+architecture requirements; they are not implemented in this phase.
+
+## Branding assets
+
+The application currently renders an accessible text lockup for **Renex** and
+**AI-Powered Regex IDE**. Official image assets have not been supplied, so this
+repository does not fabricate a logo. See [`public/brand/README.md`](public/brand/README.md)
+for the exact paths reserved for the primary logo, icon, favicon, and future
+light/dark variants. The existing `public/favicon.svg` remains a placeholder
+until an official Renex favicon is provided.
+
+## Project structure
 
 ```text
-server/                 Vite development middleware and AI provider adapters
-scripts/                Internal maintenance and regression scripts
-src/
-  fixtures/             Curated regex edge-case fixtures
-  lib/                  Shared client-side logic
-  App.tsx               Main application shell and UI panels
-  index.css             Tailwind plus theme variables
-  regexWorker.ts        Worker-based regex evaluation
+docs/phase-01/           Phase 1 audit, changes, roadmap, and verification
+public/brand/            Reserved locations for official Renex brand assets
+scripts/                 Regression and maintenance scripts
+server/                  Vite development middleware and provider adapters
+shared/                  Browser/server AI contracts and shared constants
+src/config/              Product identity and compatibility configuration
+src/fixtures/            Curated regex edge-case fixtures
+src/lib/                 API client, persistence, and fixture audit modules
+src/App.tsx              Main application shell and UI panels
+src/index.css            Theme tokens and application styles
+src/regexWorker.ts       Isolated browser regex evaluation
 ```
 
-The current AI passthrough is implemented as Vite development middleware. A production deployment should provide equivalent backend or serverless routes for `/api/generate-regex`, `/api/explain-regex`, and `/api/test-provider`, with rate limiting and server-side secret management if shared provider keys are used.
+## Roadmap
 
-## Status
+The high-level 20-phase roadmap is documented in
+[`docs/phase-01/03-renex-roadmap.md`](docs/phase-01/03-renex-roadmap.md). Phase 1
+establishes the Renex identity and architecture foundation. Production backend
+work begins in Phase 2.
 
-Built:
-
-- Live regex sandbox with match highlighting and capture group inspection.
-- Provider-agnostic natural-language regex generation.
-- Regex explanation with token-level annotations.
-- Voice input for generation prompts.
-- Target flavor selection, local history, shareable URL state, and proactive suggestions.
-- Dark/light themes, copy actions, keyboard shortcuts, and worker timeout guard.
-- Curated fixture audit and internal regression suite.
-
-Planned:
-
-- Confidence and reasoning surfacing for generated patterns.
-- Shareable explanation cards with image export.
-- First-run onboarding and example prompt shortcuts.
-- Rate limiting and usage reporting for shared-key deployments.
-- Failure analytics for low-confidence, parsing, and user-corrected generations.
-
-## Security Notes
-
-- Never commit real provider API keys, tokens, or credentials.
-- `.env.example` intentionally contains no real secrets.
-- Keys entered in the UI are stored locally in the browser.
-- Generated regex patterns should be reviewed against real data before production use.
-
-## Troubleshooting
-
-- **Voice input unavailable:** Check browser
-  microphone permissions. If speech recognition
-  is unsupported, use the text input instead.
-
-- **AI generation fails:** Verify the provider,
-  model, API key, and endpoint configuration.
-
-- **Unexpected regex behavior:** Verify the
-  target flavor and test in its intended runtime.
-
-- **Before submitting changes:** Run
-  `npm run build`, `npm run lint`, and `npm run test`.
-  
 ## Contributing
 
-Issues and pull requests are welcome. Keep changes focused and run the validation commands before opening a PR:
+Keep changes focused and run the full validation set before opening a pull
+request:
 
 ```bash
-npm run build
+npm ci
+npm run typecheck
 npm run lint
 npm run test
+npm run build
 ```
 
 ## License

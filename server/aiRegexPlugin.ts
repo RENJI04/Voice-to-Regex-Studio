@@ -1,24 +1,16 @@
 import { spawnSync } from 'node:child_process'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Plugin } from 'vite'
+import {
+  API_ROUTES,
+  DEFAULT_CUSTOM_REQUEST_TEMPLATE,
+  DEFAULT_CUSTOM_RESPONSE_PATH,
+  DEFAULT_PROVIDER_MODELS,
+  type AIProviderSettings,
+  type TargetFlavor,
+} from '../shared/ai.js'
 
-const GENERATE_REGEX_PATH = '/api/generate-regex'
-const EXPLAIN_REGEX_PATH = '/api/explain-regex'
-const TEST_PROVIDER_PATH = '/api/test-provider'
 const MAX_BODY_BYTES = 64 * 1024
-const DEFAULT_CUSTOM_REQUEST_TEMPLATE = `{
-  "model": "{{model}}",
-  "messages": [
-    { "role": "system", "content": "{{systemPrompt}}" },
-    { "role": "user", "content": "{{prompt}}" }
-  ]
-}`
-const DEFAULT_CUSTOM_RESPONSE_PATH = 'choices.0.message.content'
-const DEFAULT_MODELS = {
-  anthropic: 'claude-sonnet-5',
-  custom: 'gpt-4o-mini',
-  openai: 'gpt-4o-mini',
-} as const
 const TARGET_FLAVORS = {
   javascript: {
     label: 'JavaScript',
@@ -46,23 +38,11 @@ const TARGET_FLAVORS = {
   },
 } as const
 
-type TargetFlavor = keyof typeof TARGET_FLAVORS
-type AIProviderKind = keyof typeof DEFAULT_MODELS
-
 interface AIProvider {
   generate(prompt: string, systemPrompt: string): Promise<{ text: string }>
 }
 
-type AIProviderConfig = {
-  apiKey: string
-  customApiKeyHeader: string
-  customApiKeyPrefix: string
-  customRequestTemplate: string
-  customResponsePath: string
-  customUrl: string
-  model: string
-  provider: AIProviderKind
-}
+type AIProviderConfig = AIProviderSettings
 
 const GENERATE_SYSTEM_PROMPT = `You generate regular expressions from natural language for a requested target flavor.
 
@@ -255,7 +235,7 @@ function normalizeAIProviderConfig(value: unknown): AIProviderConfig {
       DEFAULT_CUSTOM_RESPONSE_PATH,
     ),
     customUrl: normalizeString(input.customUrl),
-    model: normalizeString(input.model, DEFAULT_MODELS[provider]),
+    model: normalizeString(input.model, DEFAULT_PROVIDER_MODELS[provider]),
     provider,
   }
 }
@@ -854,9 +834,9 @@ Explain the regex with token-level annotations now.`
 
 export function aiRegexPlugin(): Plugin {
   return {
-    name: 'voice-to-regex-api',
+    name: 'renex-development-api',
     configureServer(server) {
-      server.middlewares.use(GENERATE_REGEX_PATH, async (request, response) => {
+      server.middlewares.use(API_ROUTES.generateRegex, async (request, response) => {
         if (request.method === 'OPTIONS') {
           response.statusCode = 204
           response.end()
@@ -919,7 +899,7 @@ export function aiRegexPlugin(): Plugin {
         }
       })
 
-      server.middlewares.use(EXPLAIN_REGEX_PATH, async (request, response) => {
+      server.middlewares.use(API_ROUTES.explainRegex, async (request, response) => {
         if (request.method === 'OPTIONS') {
           response.statusCode = 204
           response.end()
@@ -1008,7 +988,7 @@ export function aiRegexPlugin(): Plugin {
         }
       })
 
-      server.middlewares.use(TEST_PROVIDER_PATH, async (request, response) => {
+      server.middlewares.use(API_ROUTES.testProvider, async (request, response) => {
         if (request.method === 'OPTIONS') {
           response.statusCode = 204
           response.end()

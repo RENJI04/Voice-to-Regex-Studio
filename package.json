@@ -1,8 +1,8 @@
 {
-  "name": "voice-to-regex-studio",
+  "name": "renex",
   "private": true,
   "version": "0.0.0",
-  "description": "A React studio for generating, testing, explaining, and hardening regular expressions from natural language.",
+  "description": "Renex is an AI-powered regex IDE for generating, testing, and explaining regular expressions.",
   "license": "MIT",
   "repository": {
     "type": "git",

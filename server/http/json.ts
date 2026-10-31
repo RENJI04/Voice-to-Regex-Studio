@@ -1,7 +1,14 @@
 import type { ServerResponse } from 'node:http'
 
 export function setCommonHeaders(response: ServerResponse) {
+  response.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; base-uri 'none'; connect-src 'self'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data:; object-src 'none'; script-src 'self'; style-src 'self'; worker-src 'self' blob:",
+  )
+  response.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
+  response.setHeader('Permissions-Policy', 'camera=(), geolocation=(), microphone=(self)')
   response.setHeader('X-Content-Type-Options', 'nosniff')
+  response.setHeader('X-Frame-Options', 'DENY')
   response.setHeader('Referrer-Policy', 'no-referrer')
   response.setHeader('Cache-Control', 'no-store')
 }

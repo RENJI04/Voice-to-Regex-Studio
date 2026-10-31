@@ -12,7 +12,13 @@ import {
   toErrorResponse,
 } from '../errors.js'
 import { createAiService } from '../services/aiService.js'
-import type { FetchImplementation } from '../providers/index.js'
+import type {
+  CustomRequestImplementation,
+  DnsResolver,
+  FetchImplementation,
+} from '../providers/index.js'
+import { getClientIp } from '../security/clientIp.js'
+import { FixedWindowRateLimiter } from '../security/rateLimiter.js'
 import { readJsonBody } from './body.js'
 import { sendJson, setCommonHeaders } from './json.js'
 
@@ -31,18 +37,33 @@ function defaultLogger(event: LogEvent) {
 }
 
 const API_PATHS = new Set<string>(Object.values(API_ROUTES))
+const LOGGABLE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS', 'POST'])
+
+function getLoggedMethod(method: string | undefined) {
+  return method && LOGGABLE_METHODS.has(method) ? method : 'OTHER'
+}
 
 export function createApiRequestHandler({
   config,
+  customRequestImplementation,
+  dnsResolver,
   fetchImplementation = fetch,
   logger = defaultLogger,
+  rateLimiter = new FixedWindowRateLimiter(config.rateLimit),
 }: {
   config: RuntimeConfig
+  customRequestImplementation?: CustomRequestImplementation
+  dnsResolver?: DnsResolver
   fetchImplementation?: FetchImplementation
   logger?: SafeLogger
+  rateLimiter?: FixedWindowRateLimiter
 }) {
   const service = createAiService({
+    customRequestImplementation,
+    dnsResolver,
     fetchImplementation,
+    maxProviderResponseBytes: config.maxProviderResponseBytes,
+    outboundPolicy: config.outboundPolicy,
     providerTimeoutMs: config.providerTimeoutMs,
   })
 
@@ -54,6 +75,7 @@ export function createApiRequestHandler({
     const path = url.pathname
     const isKnownPath = path === '/health' || API_PATHS.has(path)
     const isApiNamespace = path.startsWith('/api/')
+    const loggedPath = isKnownPath ? path : '/api/*'
 
     if (!isKnownPath && !isApiNamespace) {
       return false
@@ -106,6 +128,19 @@ export function createApiRequestHandler({
         return true
       }
 
+      const rateLimit = rateLimiter.consume(
+        getClientIp(request, config.trustProxy),
+      )
+
+      if (!rateLimit.allowed) {
+        response.setHeader('Retry-After', rateLimit.retryAfterSeconds)
+        throw new ApiError(
+          'RATE_LIMITED',
+          429,
+          'API rate limit exceeded. Try again later.',
+        )
+      }
+
       if (request.method !== 'POST') {
         response.setHeader('Allow', 'POST, OPTIONS')
         throw new ApiError(
@@ -115,7 +150,11 @@ export function createApiRequestHandler({
         )
       }
 
-      const body = await readJsonBody(request, config.maxBodyBytes)
+      const body = await readJsonBody(
+        request,
+        config.maxBodyBytes,
+        config.requestBodyTimeoutMs,
+      )
 
       switch (path) {
         case API_ROUTES.generateRegex:
@@ -151,8 +190,8 @@ export function createApiRequestHandler({
       logger({
         code: errorCode,
         durationMs: Math.round(performance.now() - startedAt),
-        method: request.method ?? 'UNKNOWN',
-        path,
+        method: getLoggedMethod(request.method),
+        path: loggedPath,
         statusCode: response.statusCode,
       })
     }

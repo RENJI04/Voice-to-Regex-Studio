@@ -19,6 +19,7 @@
     "test": "npm run test:regression && npm run test:backend",
     "test:backend": "npm run build:server && node --test tests/backend/*.test.mjs",
     "test:regression": "node scripts/run-regression-suite.mjs",
+    "test:security": "npm run build:server && node --test tests/backend/security.test.mjs",
     "preview": "vite preview",
     "start": "node dist-server/server/index.js"
   },

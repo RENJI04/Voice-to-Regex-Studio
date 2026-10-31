@@ -3,9 +3,8 @@
 **AI-Powered Regex IDE**
 
 Renex is an AI-powered regex development platform for generation, testing, and
-explanation across JavaScript, Python `re`, PCRE, and RE2/Go targets. Phase 2
-adds a deployable production backend while retaining the Phase 1 frontend and
-browser regex workspace.
+explanation across JavaScript, Python `re`, PCRE, and RE2/Go targets. Phase 3
+adds a tested network and abuse-control boundary to the deployable backend.
 
 ## Implemented today
 
@@ -14,6 +13,10 @@ browser regex workspace.
 - Regex-to-English explanations with token-level annotations.
 - Explicit API validation, structured errors, bounded provider requests, and a
   provider-independent health endpoint.
+- DNS-aware SSRF controls with public-address enforcement and pinned custom
+  provider connections.
+- Bounded provider responses, API rate limiting, explicit proxy trust, safe
+  custom headers, and production response security headers.
 - A native Node production server that serves the built frontend and the three
   same-origin AI API routes.
 - A debounced browser regex sandbox with Web Worker evaluation, match
@@ -23,9 +26,9 @@ browser regex workspace.
 - A curated fixture regression suite and production backend tests with mocked
   provider traffic.
 
-Renex does not yet include authentication, accounts, a database, quotas, rate
-limiting, hardened SSRF protection, provider allowlisting, shared server-managed
-credentials, billing, or a production observability stack.
+Renex does not yet include authentication, accounts, a database, persistent or
+distributed quotas, distributed rate limiting, shared server-managed
+credentials, billing, or an enterprise observability stack.
 
 ## Requirements
 
@@ -63,6 +66,16 @@ Optional runtime settings are documented in `.env.example`:
 - `RENEX_ALLOWED_ORIGIN`
 - `RENEX_PROVIDER_TIMEOUT_MS`
 - `RENEX_MAX_BODY_BYTES`
+- `RENEX_REQUEST_BODY_TIMEOUT_MS`
+- `RENEX_MAX_PROVIDER_RESPONSE_BYTES`
+- `RENEX_DNS_TIMEOUT_MS`
+- `RENEX_CUSTOM_PROVIDER_MODE`
+- `RENEX_CUSTOM_PROVIDER_HOSTS`
+- `RENEX_CUSTOM_PROVIDER_PORTS`
+- `RENEX_RATE_LIMIT`
+- `RENEX_RATE_LIMIT_WINDOW_MS`
+- `RENEX_RATE_LIMIT_MAX_CLIENTS`
+- `RENEX_TRUST_PROXY`
 
 The preferred production topology is browser to Renex web origin to `/api/*`
 to the selected AI provider. A separately hosted frontend requires its exact
@@ -77,6 +90,7 @@ npm run lint             # Oxlint
 npm run test             # Regression suite plus backend tests
 npm run test:regression  # Curated regex regression suite
 npm run test:backend     # Production HTTP and provider adapter tests
+npm run test:security    # Dedicated Phase 3 security controls
 npm run build            # Build frontend and production backend
 npm start                # Run the compiled production backend
 npm run preview          # Preview only the static frontend build
@@ -101,6 +115,9 @@ See the Phase 2 documents for the detailed
 [architecture](docs/phase-02/01-backend-architecture.md),
 [API contract](docs/phase-02/02-api-contract.md), and
 [trust boundaries](docs/phase-02/03-trust-boundaries.md).
+Phase 3 security behavior and residual risk are documented in the
+[threat model](docs/phase-03/01-threat-model.md) and
+[outbound policy](docs/phase-03/02-ssrf-and-outbound-policy.md).
 
 ## Provider credentials and browser storage
 
@@ -123,21 +140,29 @@ issue reports, or commits.
 
 ## Security boundary
 
-API bodies default to a 64 KiB limit. Provider requests default to a 15-second
-timeout and reject redirects. Custom URLs must be absolute HTTP(S) URLs without
-embedded credentials, and their templates and authentication header settings
-are validated. Errors do not reproduce raw upstream bodies.
+API bodies default to 64 KiB with a 10-second full-body deadline. Provider
+requests default to a 15-second deadline and a 1 MiB response ceiling. Custom
+destinations are resolved before connection; every A and AAAA result must be a
+public address, and the production transport pins socket lookup to the approved
+set. Redirects are rejected. Operators can disable custom providers or require
+an exact hostname allowlist and configure allowed destination ports.
 
-Phase 2 does not provide complete SSRF protection. Custom URLs can still target
-private or local networks. Authentication, authorization, rate limits, quotas,
-destination controls, DNS/IP enforcement, shared credentials, and production
-monitoring remain deferred.
+AI API routes use a bounded, fixed-window in-memory rate limiter. Direct client
+addresses are used unless `RENEX_TRUST_PROXY=true`; forwarding headers are
+ignored by default. Trusted-proxy mode supports exactly one trusted reverse
+proxy that appends the real source address as the rightmost XFF value and blocks
+direct backend access; it is not arbitrary proxy-chain trust. The limiter resets
+on restart and does not coordinate across replicas. Authentication,
+authorization, distributed limits and quotas, a shared credential vault,
+WAF/CDN controls, account abuse scoring, and enterprise observability remain
+deferred.
 
 ## Project structure
 
 ```text
 docs/phase-01/           Phase 1 audit, roadmap, and verification
 docs/phase-02/           Backend architecture, contracts, and verification
+docs/phase-03/           Threat model, security policy, and verification
 public/brand/            Reserved official Renex brand asset locations
 scripts/                 Regression and maintenance scripts
 server/                  Shared development and production backend

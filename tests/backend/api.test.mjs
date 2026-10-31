@@ -54,18 +54,36 @@ function openAiResponse(content = generatedResult) {
 
 async function startServer({
   allowedOrigin = null,
+  customRequestImplementation,
+  dnsResolver,
   fetchImplementation = async () => openAiResponse(),
   maxBodyBytes = 65_536,
+  maxProviderResponseBytes = 1_048_576,
   providerTimeoutMs = 100,
+  rateLimit = { limit: 1_000, maxClients: 1_000, windowMs: 60_000 },
+  requestBodyTimeoutMs = 10_000,
+  trustProxy = false,
 } = {}) {
   const server = createRenexServer({
     config: {
       allowedOrigin,
       maxBodyBytes,
+      maxProviderResponseBytes,
+      outboundPolicy: {
+        allowedHosts: [],
+        allowedPorts: [80, 443],
+        dnsTimeoutMs: 100,
+        mode: 'public',
+      },
       port: 0,
       providerTimeoutMs,
+      rateLimit,
+      requestBodyTimeoutMs,
       staticDir: '/tmp/renex-backend-test-missing-static',
+      trustProxy,
     },
+    customRequestImplementation,
+    dnsResolver,
     fetchImplementation,
     logger: () => {},
   })
@@ -420,19 +438,25 @@ test('Anthropic provider integration parses content blocks', async () => {
 })
 
 test('custom provider integration applies its template, path, and auth header', async () => {
-  const fetchImplementation = async (url, init) => {
-    assert.equal(url, 'https://custom.example/v1/generate')
-    assert.equal(init.redirect, 'error')
+  const customRequestImplementation = async (destination, init) => {
+    assert.equal(destination.url.toString(), 'https://custom.example/v1/generate')
+    assert.deepEqual(destination.addresses, [
+      { address: '93.184.216.34', family: 4 },
+    ])
     assert.equal(init.headers.Authorization, 'Bearer test-provider-key')
     const outboundBody = JSON.parse(init.body)
     assert.equal(outboundBody.model, 'test-model')
     assert.match(outboundBody.messages[1].content, /Match one or more digits/)
-    return new Response(JSON.stringify({ result: { text: generatedResult } }), {
+    return {
+      body: JSON.stringify({ result: { text: generatedResult } }),
       status: 200,
-    })
+    }
   }
 
-  await withServer({ fetchImplementation }, async (server) => {
+  await withServer({
+    customRequestImplementation,
+    dnsResolver: async () => [{ address: '93.184.216.34', family: 4 }],
+  }, async (server) => {
     const response = await request(server, '/api/generate-regex', {
       body: generateBody({ aiConfig: providerConfig('custom') }),
     })

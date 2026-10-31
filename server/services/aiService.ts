@@ -19,8 +19,11 @@ import {
 import { ApiError } from '../errors.js'
 import {
   createAIProvider,
+  type CustomRequestImplementation,
+  type DnsResolver,
   type FetchImplementation,
 } from '../providers/index.js'
+import type { OutboundPolicyConfig } from '../config.js'
 
 export type AiService = {
   explainRegex(request: ExplainRegexRequest): Promise<ExplainRegexResponse>
@@ -33,14 +36,26 @@ export type AiService = {
 }
 
 export function createAiService({
+  customRequestImplementation,
+  dnsResolver,
   fetchImplementation,
+  maxProviderResponseBytes,
+  outboundPolicy,
   providerTimeoutMs,
 }: {
+  customRequestImplementation?: CustomRequestImplementation
+  dnsResolver?: DnsResolver
   fetchImplementation: FetchImplementation
+  maxProviderResponseBytes: number
+  outboundPolicy: OutboundPolicyConfig
   providerTimeoutMs: number
 }): AiService {
   const providerDependencies = {
+    customRequestImplementation,
+    dnsResolver,
     fetchImplementation,
+    maxResponseBytes: maxProviderResponseBytes,
+    outboundPolicy,
     timeoutMs: providerTimeoutMs,
   }
 

@@ -1,7 +1,11 @@
 import type { IncomingMessage } from 'node:http'
 import { ApiError } from '../errors.js'
 
-export function readJsonBody(request: IncomingMessage, maxBodyBytes: number) {
+export function readJsonBody(
+  request: IncomingMessage,
+  maxBodyBytes: number,
+  timeoutMs: number,
+) {
   const contentType = request.headers['content-type']?.split(';', 1)[0]?.trim()
 
   if (contentType !== 'application/json') {
@@ -25,13 +29,48 @@ export function readJsonBody(request: IncomingMessage, maxBodyBytes: number) {
   return new Promise<unknown>((resolve, reject) => {
     const chunks: Buffer[] = []
     let bytesRead = 0
-    let tooLarge = false
+    let settled = false
+    const timeout = setTimeout(() => {
+      fail(
+        new ApiError(
+          'REQUEST_TIMEOUT',
+          408,
+          `Request body was not received within ${timeoutMs}ms.`,
+        ),
+      )
+      request.resume()
+    }, timeoutMs)
+
+    function cleanup() {
+      clearTimeout(timeout)
+    }
+
+    function fail(error: ApiError) {
+      if (settled) {
+        return
+      }
+
+      settled = true
+      cleanup()
+      reject(error)
+    }
 
     request.on('data', (chunk: Buffer) => {
+      if (settled) {
+        return
+      }
+
       bytesRead += chunk.length
 
       if (bytesRead > maxBodyBytes) {
-        tooLarge = true
+        fail(
+          new ApiError(
+            'PAYLOAD_TOO_LARGE',
+            413,
+            `Request body must not exceed ${maxBodyBytes} bytes.`,
+          ),
+        )
+        request.resume()
         return
       }
 
@@ -39,16 +78,12 @@ export function readJsonBody(request: IncomingMessage, maxBodyBytes: number) {
     })
 
     request.on('end', () => {
-      if (tooLarge) {
-        reject(
-          new ApiError(
-            'PAYLOAD_TOO_LARGE',
-            413,
-            `Request body must not exceed ${maxBodyBytes} bytes.`,
-          ),
-        )
+      if (settled) {
         return
       }
+
+      settled = true
+      cleanup()
 
       try {
         resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown)
@@ -63,10 +98,10 @@ export function readJsonBody(request: IncomingMessage, maxBodyBytes: number) {
       }
     })
     request.on('aborted', () =>
-      reject(new ApiError('INVALID_REQUEST', 400, 'Request was aborted.')),
+      fail(new ApiError('INVALID_REQUEST', 400, 'Request was aborted.')),
     )
     request.on('error', () =>
-      reject(
+      fail(
         new ApiError(
           'INVALID_REQUEST',
           400,

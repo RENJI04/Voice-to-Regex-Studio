@@ -1,5 +1,19 @@
 import type { AIProviderSettings } from '../../shared/ai.js'
+import type { OutboundPolicyConfig } from '../config.js'
 import { ApiError } from '../errors.js'
+import {
+  authorizeCustomDestination,
+  type DnsResolver,
+  resolveAllAddresses,
+} from '../security/outboundPolicy.js'
+import {
+  type CustomRequestImplementation,
+  readLimitedFetchResponse,
+  requestCustomProvider,
+} from '../security/providerTransport.js'
+
+export type { DnsResolver } from '../security/outboundPolicy.js'
+export type { CustomRequestImplementation } from '../security/providerTransport.js'
 
 export type FetchImplementation = typeof fetch
 
@@ -7,8 +21,12 @@ export interface AIProvider {
   generate(prompt: string, systemPrompt: string): Promise<{ text: string }>
 }
 
-type ProviderDependencies = {
+export type ProviderDependencies = {
+  customRequestImplementation?: CustomRequestImplementation
+  dnsResolver?: DnsResolver
   fetchImplementation: FetchImplementation
+  maxResponseBytes: number
+  outboundPolicy: OutboundPolicyConfig
   timeoutMs: number
 }
 
@@ -16,23 +34,49 @@ async function requestProvider(
   url: string,
   init: RequestInit,
   dependencies: ProviderDependencies,
+  custom = false,
 ) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), dependencies.timeoutMs)
 
   try {
-    const response = await dependencies.fetchImplementation(url, {
-      ...init,
-      redirect: 'error',
-      signal: controller.signal,
-    })
-    const rawText = await response.text()
+    let status: number
+    let rawText: string
 
-    if (!response.ok) {
+    if (custom) {
+      const destination = await authorizeCustomDestination(
+        url,
+        dependencies.outboundPolicy,
+        dependencies.dnsResolver ?? resolveAllAddresses,
+        controller.signal,
+      )
+      const response = await (
+        dependencies.customRequestImplementation ?? requestCustomProvider
+      )(destination, init, {
+        maxResponseBytes: dependencies.maxResponseBytes,
+        signal: controller.signal,
+      })
+      status = response.status
+      rawText = response.body
+    } else {
+      const response = await dependencies.fetchImplementation(url, {
+        ...init,
+        redirect: 'error',
+        signal: controller.signal,
+      })
+      status = response.status
+      rawText = await readLimitedFetchResponse(
+        response,
+        dependencies.maxResponseBytes,
+        controller,
+      )
+    }
+
+    if (status < 200 || status >= 300) {
       throw new ApiError(
         'PROVIDER_REQUEST_FAILED',
         502,
-        `Provider returned HTTP ${response.status}.`,
+        `Provider returned HTTP ${status}.`,
       )
     }
 
@@ -249,6 +293,7 @@ class CustomEndpointProvider implements AIProvider {
         method: 'POST',
       },
       this.dependencies,
+      true,
     )
 
     return {

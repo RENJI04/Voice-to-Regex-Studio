@@ -16,8 +16,28 @@ import {
 } from '../regex/validation.js'
 
 const HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/
+const PROTECTED_CUSTOM_HEADERS = new Set([
+  'connection',
+  'content-length',
+  'content-type',
+  'host',
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade',
+])
 const PROVIDERS = new Set<AIProviderKind>(['anthropic', 'custom', 'openai'])
 const TARGET_FLAVORS = new Set<string>(TARGET_FLAVOR_IDS)
+
+function hasControlCharacter(value: string) {
+  return [...value].some((character) => {
+    const codePoint = character.codePointAt(0) ?? 0
+    return codePoint <= 31 || codePoint === 127
+  })
+}
 
 function asRecord(value: unknown, label: string) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -180,11 +200,27 @@ export function validateProviderSettings(value: unknown): AIProviderSettings {
     )
   }
 
-  if (/\r|\n/.test(customApiKeyPrefix)) {
+  if (PROTECTED_CUSTOM_HEADERS.has(customApiKeyHeader.toLowerCase())) {
     throw new ApiError(
       'INVALID_REQUEST',
       400,
-      'Custom API key prefix must not contain line breaks.',
+      'Custom API key header is reserved by the server.',
+    )
+  }
+
+  if (hasControlCharacter(apiKey)) {
+    throw new ApiError(
+      'INVALID_REQUEST',
+      400,
+      'API key must not contain control characters.',
+    )
+  }
+
+  if (hasControlCharacter(customApiKeyPrefix)) {
+    throw new ApiError(
+      'INVALID_REQUEST',
+      400,
+      'Custom API key prefix must not contain control characters.',
     )
   }
 

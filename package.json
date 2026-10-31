@@ -11,12 +11,16 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npm run typecheck && npm run build:web && npm run build:server",
+    "build:server": "tsc -p tsconfig.server.json",
+    "build:web": "vite build",
     "lint": "oxlint",
     "typecheck": "tsc -b",
-    "test": "npm run test:regression",
+    "test": "npm run test:regression && npm run test:backend",
+    "test:backend": "npm run build:server && node --test tests/backend/*.test.mjs",
     "test:regression": "node scripts/run-regression-suite.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "node dist-server/server/index.js"
   },
   "dependencies": {
     "react": "^19.2.7",

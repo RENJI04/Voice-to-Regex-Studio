@@ -1,20 +1,47 @@
 import {
   API_ROUTES,
+  type ApiErrorResponse,
   type AIProviderSettings,
   type ExplainRegexResponse,
   type GenerateRegexResponse,
   type TargetFlavor,
 } from '../../shared/ai'
 
+type LegacyApiErrorResponse = { error?: string }
+
+function getErrorMessage(
+  payload: ApiErrorResponse | LegacyApiErrorResponse,
+  fallbackError: string,
+) {
+  if (typeof payload.error === 'string' && payload.error) {
+    return payload.error
+  }
+
+  if (
+    payload.error &&
+    typeof payload.error === 'object' &&
+    typeof payload.error.message === 'string'
+  ) {
+    return payload.error.message
+  }
+
+  return fallbackError
+}
+
 async function readJsonResponse<T extends object>(
   response: Response,
   fallbackError: string,
 ) {
-  const payload = (await response.json()) as T | { error?: string }
+  const payload = (await response.json()) as
+    | T
+    | ApiErrorResponse
+    | LegacyApiErrorResponse
 
   if (!response.ok) {
     throw new Error(
-      'error' in payload && payload.error ? payload.error : fallbackError,
+      'error' in payload
+        ? getErrorMessage(payload as ApiErrorResponse | LegacyApiErrorResponse, fallbackError)
+        : fallbackError,
     )
   }
 
@@ -85,9 +112,19 @@ export async function testAIProviderConnection(
       aiConfig: aiSettings,
     }),
   })
-  const payload = (await response.json()) as { error?: string; ok?: boolean }
+  const payload = (await response.json()) as
+    | { ok?: boolean }
+    | ApiErrorResponse
+    | LegacyApiErrorResponse
 
-  if (!response.ok || !payload.ok) {
-    throw new Error(payload.error ?? 'Provider connection test failed.')
+  if (!response.ok || !('ok' in payload && payload.ok)) {
+    throw new Error(
+      'error' in payload
+        ? getErrorMessage(
+            payload as ApiErrorResponse | LegacyApiErrorResponse,
+            'Provider connection test failed.',
+          )
+        : 'Provider connection test failed.',
+    )
   }
 }

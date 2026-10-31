@@ -41,6 +41,50 @@ export type AIProviderSettings = {
   provider: AIProviderKind
 }
 
+export type GenerateRegexRequest = {
+  aiConfig: AIProviderSettings
+  description: string
+  sampleText: string
+  targetFlavor: TargetFlavor
+}
+
+export type ExplainRegexRequest = {
+  aiConfig: AIProviderSettings
+  pattern: string
+  flags: string
+  sampleText: string
+  targetFlavor: TargetFlavor
+}
+
+export type TestProviderRequest = {
+  aiConfig: AIProviderSettings
+}
+
+export type ApiErrorCode =
+  | 'INTERNAL_ERROR'
+  | 'INVALID_FLAGS'
+  | 'INVALID_JSON'
+  | 'INVALID_PATTERN'
+  | 'INVALID_PROVIDER'
+  | 'INVALID_REQUEST'
+  | 'METHOD_NOT_ALLOWED'
+  | 'NOT_FOUND'
+  | 'ORIGIN_NOT_ALLOWED'
+  | 'PAYLOAD_TOO_LARGE'
+  | 'PROVIDER_REQUEST_FAILED'
+  | 'PROVIDER_RESPONSE_INVALID'
+  | 'PROVIDER_TIMEOUT'
+  | 'SERVICE_UNAVAILABLE'
+  | 'UNSUPPORTED_MEDIA_TYPE'
+  | 'UNSUPPORTED_TARGET_FLAVOR'
+
+export type ApiErrorResponse = {
+  error: {
+    code: ApiErrorCode
+    message: string
+  }
+}
+
 export type RegexSuggestion = {
   title: string
   description: string
